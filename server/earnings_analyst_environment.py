@@ -2,12 +2,13 @@
 Earnings Analyst Environment Implementation.
 
 Samples rows from the Hugging Face earnings-call dataset and exposes task-specific
-observations from environment_config.TASKS.
+observations from ``tasks.registry.TASKS``.
 """
 
 from __future__ import annotations
 
 import math
+import os
 import random
 from typing import Any
 from uuid import uuid4
@@ -17,15 +18,25 @@ from openenv.core.env_server.types import State
 
 try:
     from ..environment_config import DEFAULT_TASK, TASKS
+    from ..tasks.exceptions import TaskNotImplementedError
+    from ..tasks.registry import get_grader
     from ..models import EarningsAnalystAction, EarningsAnalystObservation
 except ImportError:
     from environment_config import DEFAULT_TASK, TASKS
     from models import EarningsAnalystAction, EarningsAnalystObservation
+    from tasks.exceptions import TaskNotImplementedError
+    from tasks.registry import get_grader
 
 try:
     from .dataset_loader import dataset
 except ImportError:
     from server.dataset_loader import dataset
+
+
+def _resolve_task_id(explicit: str | None) -> str:
+    return (
+        explicit or os.environ.get("EARNINGS_ANALYST_TASK_ID") or DEFAULT_TASK
+    ).strip()
 
 
 def _non_empty_text(value: Any) -> bool:
@@ -55,17 +66,24 @@ class EarningsAnalystEnvironment(Environment):
 
     SUPPORTS_CONCURRENT_SESSIONS: bool = True
 
-    def __init__(self, task_id: str = DEFAULT_TASK) -> None:
-        if task_id not in TASKS:
+    def __init__(self, task_id: str | None = None) -> None:
+        self._task_id = _resolve_task_id(task_id)
+        if self._task_id not in TASKS:
             raise KeyError(
-                f"Unknown task_id={task_id!r}. Valid: {sorted(TASKS.keys())}"
+                f"Unknown task_id={self._task_id!r}. Valid: {sorted(TASKS.keys())}"
             )
-        self._cfg = TASKS[task_id]
+        self._cfg = TASKS[self._task_id]
         self._state = State(episode_id=str(uuid4()), step_count=0)
         self._current_row: dict[str, Any] | None = None
 
     def reset(self) -> EarningsAnalystObservation:
         """Sample one dataset row and return the agent-visible observation bundle."""
+        if not self._cfg["implemented"]:
+            raise TaskNotImplementedError(
+                f"Task {self._task_id!r} is not implemented yet. "
+                f"Set implemented=True and fill spec/grader under tasks/ when ready."
+            )
+
         self._state = State(episode_id=str(uuid4()), step_count=0)
         idx = random.randrange(len(dataset))
         row = dataset[idx]
@@ -93,22 +111,40 @@ class EarningsAnalystEnvironment(Environment):
 
     def step(self, action: EarningsAnalystAction) -> EarningsAnalystObservation:  # type: ignore[override]
         """
-        Execute one step (stub). Scoring against ``sentiment_label`` is a follow-up.
+        Score the agent's string prediction against the sampled row (task-specific grader).
 
         Args:
-            action: Agent action with predicted ``sentiment``.
+            action: Agent action with ``prediction`` string.
 
         Returns:
-            Terminal observation placeholder; reward grading not implemented yet.
+            Terminal observation with reward and metadata including ground truth.
         """
         self._state.step_count += 1
+        label_col = self._cfg["label_col"]
+        label_values = list(self._cfg["label_values"])
+        row = self._current_row or {}
+        ground_truth = str(row.get(label_col, "")).strip()
+
+        grade_fn = get_grader(self._task_id)
+        reward = float(
+            grade_fn(
+                action.prediction,
+                ground_truth,
+                label_values,
+            )
+        )
+
         return EarningsAnalystObservation(
             text_context={},
             numerical_context={},
             task_instruction=self._cfg["task_instruction"],
             done=True,
-            reward=0.0,
-            metadata={"predicted_sentiment": action.sentiment},
+            reward=reward,
+            metadata={
+                "task_id": self._task_id,
+                "predicted": action.prediction,
+                "ground_truth": ground_truth,
+            },
         )
 
     @property

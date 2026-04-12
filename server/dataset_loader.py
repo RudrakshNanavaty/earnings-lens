@@ -1,7 +1,7 @@
 """
 Load the Hugging Face dataset once as a module-level singleton.
 
-No task-specific column lists — see environment_config.TASKS for that.
+Task-specific columns are declared per task under ``tasks/<name>/spec.py``.
 """
 
 from datasets import load_dataset

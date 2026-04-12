@@ -13,6 +13,7 @@ dependencies = [
     # install from github
     # "openenv-core[core] @ git+https://github.com/meta-pytorch/OpenEnv.git",
     "huggingface-hub>=1.10.1",
+    "openai>=2.31.0",
     "openenv-core[core]>=0.2.2",
     # Environment-specific dependencies
     # Add all dependencies needed for your environment here
@@ -22,6 +23,7 @@ dependencies = [
     # "gymnasium>=0.29.0",
     # "openspiel>=1.0.0",
     # "smolagents>=1.22.0,<2",
+    "python-dotenv>=1.2.2",
 ]
 
 [project.optional-dependencies]
@@ -34,5 +36,14 @@ server = "earnings_analyst.server.app:main"
 
 [tool.setuptools]
 include-package-data = true
-packages = ["earnings_analyst", "earnings_analyst.server"]
-package-dir = { "earnings_analyst" = ".", "earnings_analyst.server" = "server" }
+packages = [
+    "earnings_analyst",
+    "earnings_analyst.server",
+    "earnings_analyst.tasks",
+    "earnings_analyst.tasks.sentiment_label",
+    "earnings_analyst.tasks.next_quarter_move",
+]
+package-dir = { "earnings_analyst" = ".", "earnings_analyst.server" = "server", "earnings_analyst.tasks" = "tasks", "earnings_analyst.tasks.sentiment_label" = "tasks/sentiment_label", "earnings_analyst.tasks.next_quarter_move" = "tasks/next_quarter_move" }
+
+[tool.setuptools.package-data]
+"earnings_analyst.tasks" = ["1_day_move/*.py", "30_day_move/*.py"]

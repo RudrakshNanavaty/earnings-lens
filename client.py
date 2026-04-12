@@ -19,23 +19,28 @@ class EarningsAnalystEnv(
     enabling efficient multi-step interactions with lower latency.
     Each client instance has its own dedicated environment session on the server.
 
-    Example:
+    Example (async):
         >>> # Connect to a running server
-        >>> with EarningsAnalystEnv(base_url="http://localhost:8000") as client:
+        >>> async def demo():
+        ...     async with EarningsAnalystEnv(base_url="http://localhost:8000") as client:
+        ...         result = await client.reset()
+        ...         print(result.observation.task_instruction)
+        ...         result = await client.step(EarningsAnalystAction(prediction="neutral"))
+        ...         print(result.observation.metadata)
+
+    Example (sync wrapper):
+        >>> with EarningsAnalystEnv(base_url="http://localhost:8000").sync() as client:
         ...     result = client.reset()
-        ...     print(result.observation.task_instruction)
-        ...
-        ...     result = client.step(EarningsAnalystAction(sentiment="neutral"))
-        ...     print(result.observation.metadata)
+        ...     result = client.step(EarningsAnalystAction(prediction="neutral"))
 
     Example with Docker:
         >>> # Automatically start container and connect
-        >>> client = EarningsAnalystEnv.from_docker_image("earnings_analyst-env:latest")
+        >>> client = await EarningsAnalystEnv.from_docker_image("earnings_analyst-env:latest")
         >>> try:
-        ...     result = client.reset()
-        ...     result = client.step(EarningsAnalystAction(sentiment="neutral"))
+        ...     result = await client.reset()
+        ...     result = await client.step(EarningsAnalystAction(prediction="0.01"))
         ... finally:
-        ...     client.close()
+        ...     await client.close()
     """
 
     def _step_payload(self, action: EarningsAnalystAction) -> Dict:
@@ -49,7 +54,7 @@ class EarningsAnalystEnv(
             Dictionary representation suitable for JSON encoding
         """
         return {
-            "sentiment": action.sentiment,
+            "prediction": action.prediction,
         }
 
     def _parse_result(self, payload: Dict) -> StepResult[EarningsAnalystObservation]:
