@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import math
 import os
+import json
 import random
 from typing import Any
 from uuid import uuid4
@@ -120,10 +121,16 @@ class EarningsAnalystEnvironment(Environment):
             Terminal observation with reward and metadata including ground truth.
         """
         self._state.step_count += 1
-        label_col = self._cfg["label_col"]
-        label_values = list(self._cfg["label_values"])
+        label_col = self._cfg.get("label_col", "symbol")
+        label_values = list(self._cfg.get("label_values", []))
         row = self._current_row or {}
-        ground_truth = str(row.get(label_col, "")).strip()
+
+        # Handle composite ground truth if multiple columns are specified (e.g. for get_figures)
+        if "xbrl_columns" in self._cfg:
+            gt_data = {col: row.get(col) for col in self._cfg["xbrl_columns"]}
+            ground_truth = json.dumps(gt_data)
+        else:
+            ground_truth = str(row.get(label_col, "")).strip()
 
         grade_fn = get_grader(self._task_id)
         reward = float(
