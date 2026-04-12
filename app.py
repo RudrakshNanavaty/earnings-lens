@@ -231,7 +231,9 @@ try:
 except (ImportError, ModuleNotFoundError):
     from server.app import app as env_app
 
-# Mount the environment API at /api
+# Mount the environment API at both root and /api for compatibility
+# Root level is needed for OpenEnv standard validation
+api_app.include_router(env_app.router)
 api_app.mount("/api", env_app)
 
 # Wrap Gradio with FastAPI
