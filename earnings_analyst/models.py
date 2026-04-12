@@ -34,7 +34,11 @@ class EarningsAnalystObservation(Observation):
         default="",
         description="Natural language instruction and JSON schema for the agent",
     )
+    ground_truth: str = Field(
+        default="",
+        description="Actual value for the task (populated on terminal step)",
+    )
     metadata: dict[str, Any] = Field(
         default_factory=dict,
-        description="Additional context for debugging, rewards, or logging (e.g. ground truth)",
+        description="Additional context for debugging, rewards, or logging",
     )
