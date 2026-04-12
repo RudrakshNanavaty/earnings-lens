@@ -1,0 +1,28 @@
+# Python / Environment
+.venv/
+__pycache__/
+*.pyc
+
+# Environment Variables / Keys
+.env
+.env.*
+!.env.example
+
+
+# Logging / Tracking Results
+tracking/results.csv
+
+# IDEs
+.vscode/
+.idea/
+openenv_earnings_analyst.egg-info/
+
+# Agents
+.agents/
+.cursor/
+
+.DS_Store
+
+# Huggingface spaces doesn't allow pdfs anywhere in git history
+*.pdf
+*.parquet
