@@ -16,6 +16,9 @@ dependencies = [
     "openai>=2.31.0",
     "openenv-core[core]>=0.2.2",
     "python-dotenv>=1.2.2",
+    "gradio>=4.0.0",
+    "uvicorn>=0.30.0",
+    "fastapi>=0.111.0",
 ]
 
 [project.optional-dependencies]
