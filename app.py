@@ -144,8 +144,8 @@ footer {visibility: hidden}
 """
 
 with gr.Blocks(css=custom_css, title="Earnings Analyst - OpenEnv") as demo:
-    with gr.Div(elem_classes="container"):
-        with gr.Div(elem_classes="header"):
+    with gr.Column(elem_classes="container"):
+        with gr.Column(elem_classes="header"):
             gr.Markdown("# 🏑 Earnings Analyst")
             gr.Markdown("Interactive environment for financial analysis tasks using [OpenEnv](https://github.com/meta-pytorch/OpenEnv). Evaluate agents or your own analysis on earnings call data.")
 
