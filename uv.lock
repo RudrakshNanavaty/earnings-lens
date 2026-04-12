@@ -1665,10 +1665,13 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "datasets" },
+    { name = "fastapi" },
+    { name = "gradio" },
     { name = "huggingface-hub" },
     { name = "openai" },
     { name = "openenv-core", extra = ["core"] },
     { name = "python-dotenv" },
+    { name = "uvicorn" },
 ]
 
 [package.optional-dependencies]
@@ -1680,12 +1683,15 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "datasets", specifier = ">=4.8.4" },
+    { name = "fastapi", specifier = ">=0.111.0" },
+    { name = "gradio", specifier = ">=4.0.0" },
     { name = "huggingface-hub", specifier = ">=1.10.1" },
     { name = "openai", specifier = ">=2.31.0" },
     { name = "openenv-core", extras = ["core"], specifier = ">=0.2.2" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.0.0" },
     { name = "python-dotenv", specifier = ">=1.2.2" },
+    { name = "uvicorn", specifier = ">=0.30.0" },
 ]
 provides-extras = ["dev"]
 
