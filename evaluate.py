@@ -99,6 +99,17 @@ async def run_evaluation(
         if is_exact:
             per_ground_truth_label[normalized_ground_truth]["correct"] += 1
 
+        # --- VERBOSE PRINTING BLOCK (Safe to remove) ---
+        # NOTE: This block is exclusively for result visibility in the console.
+        if not quiet:
+            print(f"\n--- Episode {episode_index + 1}/{samples} Summary ---")
+            print(f"Reward: {episode_reward:.4f}")
+            print(f"Predicted: {predicted_label}")
+            print(f"Ground Truth: {ground_truth_label}")
+            print(f"Model Response: {episode_result.model_response_text}")
+            print("-" * 40)
+        # ------------------------------------------------
+
         csv_rows.append(
             {
                 "sample_index": episode_index + 1,

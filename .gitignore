@@ -26,3 +26,5 @@ openenv_earnings_analyst.egg-info/
 # Huggingface spaces doesn't allow pdfs anywhere in git history
 *.pdf
 *.parquet
+
+results/

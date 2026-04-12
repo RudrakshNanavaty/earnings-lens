@@ -2,6 +2,7 @@
 Data models for the Earnings Analyst Environment.
 """
 
+from typing import Any
 from openenv.core.env_server.types import Action, Observation
 from pydantic import Field
 
@@ -32,4 +33,12 @@ class EarningsAnalystObservation(Observation):
     task_instruction: str = Field(
         default="",
         description="Natural language instruction and JSON schema for the agent",
+    )
+    ground_truth: str = Field(
+        default="",
+        description="Actual value for the task (populated on terminal step)",
+    )
+    metadata: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Additional context for debugging, rewards, or logging",
     )

@@ -1,10 +1,12 @@
-"""Grading for ``30_day_move`` — implement when the task is ready."""
+"""Grading logic for ``30_day_move``."""
 
 from __future__ import annotations
+from ..grading import grade_smart_move
 
 
 def grade(predicted: str, ground_truth: str, label_values: list[str]) -> float:
-    raise NotImplementedError(
-        "Task '30_day_move' is not implemented yet. "
-        "Implement grader logic in tasks/30_day_move/grader.py."
-    )
+    """
+    Score the agent's prediction using the smart reward (Directional + Numerical).
+    This logic is handled centrally in grading.py to ensure consistency across movement tasks.
+    """
+    return grade_smart_move(predicted, ground_truth, label_values)

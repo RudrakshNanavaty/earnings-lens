@@ -14,7 +14,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Final
 
-from . import next_quarter_move, sentiment_label
+from . import get_figures, next_quarter_move, sentiment_label
 from .loader import load_task_subpackage
 from .types import TaskSpec
 
@@ -34,7 +34,9 @@ _TASK_ENTRIES: list[tuple[TaskSpec, GradingFn]] = [
     (_pkg_1_day_move.SPEC, _pkg_1_day_move.grade),
     (_pkg_30_day_move.SPEC, _pkg_30_day_move.grade),
     (next_quarter_move.SPEC, next_quarter_move.grade),
+    (get_figures.SPEC, get_figures.grade),
 ]
+
 
 TASKS: dict[str, TaskSpec] = {spec["task_id"]: spec for spec, _ in _TASK_ENTRIES}
 GRADERS: dict[str, GradingFn] = {spec["task_id"]: fn for spec, fn in _TASK_ENTRIES}
