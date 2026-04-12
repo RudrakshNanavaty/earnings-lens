@@ -1,69 +1,94 @@
 """
-Single-episode inference: reset env, call OpenAI, step with prediction string.
+Inference Script — Earnings Analyst (OpenEnv)
+=============================================
+Mandatory environment variables (injected by the hackathon evaluator):
+    HF_TOKEN        Hugging Face / API key for the LLM.
+    API_BASE_URL    The LLM API endpoint (OpenAI-compatible).
+    MODEL_NAME      The model identifier.
+    IMAGE_NAME      Docker image for the environment (triggers from_docker_image).
 
-Requires a running OpenEnv server (e.g. `uv run server`).
+Local-dev fallbacks (set in .env):
+    OPENAI_API_KEY  Alternative API key when HF_TOKEN is absent.
+    OPENAI_MODEL    Alternative model name when MODEL_NAME is absent.
+    ENV_SERVER_URL  HTTP base URL used when IMAGE_NAME is not set.
 
-The server must use the same task as your prompt expects (``EARNINGS_ANALYST_TASK_ID``).
-
-Usage:
-    uv run python inference.py
-    # or
-    python inference.py
+STDOUT FORMAT
+    [START] task=<task> env=earnings_analyst model=<model>
+    [STEP]  step=<n> action=<action> reward=<0.00> done=<true|false> error=<msg|null>
+    [END]   success=<true|false> steps=<n> score=<0.00> rewards=<r1,r2,...>
 """
 
 from __future__ import annotations
 
-import argparse
 import asyncio
 import json
 import os
-import sys
-from dataclasses import dataclass
 from typing import Any
 
 from dotenv import load_dotenv
-from openai import AsyncOpenAI
+from openai import OpenAI
 
 from earnings_analyst.client import EarningsAnalystEnv
 from earnings_analyst.models import EarningsAnalystAction, EarningsAnalystObservation
 
 load_dotenv()
 
-DEFAULT_LABELS = [
-    "very bearish",
-    "bearish",
-    "neutral",
-    "bullish",
-    "very bullish",
-]
+API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY") or os.getenv("OPENAI_API_KEY")
+API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
+MODEL_NAME = os.getenv("MODEL_NAME") or os.getenv(
+    "OPENAI_MODEL", "Qwen/Qwen2.5-72B-Instruct"
+)
+IMAGE_NAME = os.getenv("IMAGE_NAME") or os.getenv("LOCAL_IMAGE_NAME")
+ENV_SERVER_URL = os.getenv("ENV_SERVER_URL", "http://localhost:8000")
+TASK_NAME = os.getenv("EARNINGS_ANALYST_TASK_ID", "sentiment_label")
+BENCHMARK = "earnings_analyst"
+SUCCESS_SCORE_THRESHOLD = 0.1
 
 
-@dataclass
-class EpisodeResult:
-    reward: float | None
-    predicted: str
-    ground_truth: str
-    done: bool
-    model_response_text: str | None = None
+# ---------------------------------------------------------------------------
+# Logging helpers — mandatory STDOUT protocol
+# ---------------------------------------------------------------------------
+
+
+def log_start(task: str, env: str, model: str) -> None:
+    print(f"[START] task={task} env={env} model={model}", flush=True)
+
+
+def log_step(
+    step: int, action: str, reward: float, done: bool, error: str | None
+) -> None:
+    print(
+        f"[STEP] step={step} action={action} reward={reward:.2f} "
+        f"done={str(done).lower()} error={error or 'null'}",
+        flush=True,
+    )
+
+
+def log_end(success: bool, steps: int, score: float, rewards: list[float]) -> None:
+    rewards_str = ",".join(f"{r:.2f}" for r in rewards)
+    print(
+        f"[END] success={str(success).lower()} steps={steps} score={score:.2f} rewards={rewards_str}",
+        flush=True,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Prediction helpers
+# ---------------------------------------------------------------------------
 
 
 def _normalize_prediction(model_text: str, valid: list[str] | None = None) -> str:
-    """Map model output to a canonical label or return as is for regression."""
+    """Map model output to a canonical label, or return as-is for regression."""
     if not valid:
         return model_text.strip()
-
-    labels = valid
-    normalized_model_text = str(model_text).strip().lower()
-    for canonical_label in labels:
-        if normalized_model_text == canonical_label.lower():
-            return canonical_label
-    for canonical_label in labels:
-        canonical_lower = canonical_label.lower()
-        if (
-            canonical_lower in normalized_model_text
-            or normalized_model_text in canonical_lower
-        ):
-            return canonical_label
+    normalized = str(model_text).strip().lower()
+    for label in valid:
+        if normalized == label.lower():
+            return label
+    for label in valid:
+        label_lower = label.lower()
+        if label_lower in normalized or normalized in label_lower:
+            return label
     return "neutral"
 
 
@@ -79,16 +104,12 @@ def build_user_content(obs: EarningsAnalystObservation) -> str:
     return "\n\n".join(parts)
 
 
-async def predict_with_openai(
+def get_prediction(
+    client: OpenAI,
     obs: EarningsAnalystObservation,
-    *,
-    client: AsyncOpenAI,
-    model: str,
     valid_labels: list[str] | None = None,
-) -> tuple[str, str]:
-    """
-    Example Chat Completions call returning a JSON object.
-    """
+) -> tuple[str, str | None]:
+    """Call the LLM and return (prediction_string, last_action_error_or_None)."""
     user_content = build_user_content(obs)
     system_prompt = (
         "You are a financial analyst assistant. "
@@ -96,23 +117,24 @@ async def predict_with_openai(
         "EXACTLY as instructed in the Task Instruction. "
         "Reply with a single JSON object only, no markdown or extra text."
     )
-    completion = await client.chat.completions.create(
-        model=model,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_content},
-        ],
-        response_format={"type": "json_object"},
-    )
-    response_text = (completion.choices[0].message.content or "").strip()
+    try:
+        completion = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_content},
+            ],
+            response_format={"type": "json_object"},
+        )
+        response_text = (completion.choices[0].message.content or "").strip()
+    except Exception as exc:
+        return "neutral", str(exc)
 
-    # Try to extract the primary value based on common keys
     predicted = response_text
     try:
         parsed: dict[str, Any] = json.loads(response_text)
         if isinstance(parsed, dict):
-            # Check for common return keys
-            for key in ["sentiment", "move", "label", "prediction"]:
+            for key in ["sentiment", "label", "move", "prediction"]:
                 if key in parsed:
                     if valid_labels:
                         predicted = _normalize_prediction(
@@ -125,101 +147,69 @@ async def predict_with_openai(
         if valid_labels:
             predicted = _normalize_prediction(response_text, valid_labels)
 
-    return predicted, response_text
+    return predicted, None
 
 
-async def run_episode(
-    *,
-    base_url: str | None = None,
-    openai_api_key: str | None = None,
-    openai_base_url: str | None = None,
-    model: str | None = None,
-    verbose: bool = True,
-) -> EpisodeResult:
-    """
-    One reset → OpenAI prediction → step. Returns reward and metadata from the server.
-    """
-    environment_base_url = base_url or os.environ.get(
-        "ENV_SERVER_URL", "http://localhost:8000"
-    )
-    api_key = openai_api_key or os.environ.get("OPENAI_API_KEY")
-    if not api_key:
-        raise RuntimeError("Set OPENAI_API_KEY in the environment or .env")
+# ---------------------------------------------------------------------------
+# Main episode loop
+# ---------------------------------------------------------------------------
 
-    resolved_openai_base_url = openai_base_url or os.environ.get("API_BASE_URL")
-    model_name = model or os.environ.get("OPENAI_MODEL", "gpt-4o")
 
-    openai_client_options: dict[str, Any] = {"api_key": api_key}
-    if resolved_openai_base_url:
-        openai_client_options["base_url"] = resolved_openai_base_url
-
-    if verbose:
-        print(
-            f"DEBUG: Using base_url={resolved_openai_base_url or 'default'} model={model_name}"
+async def main() -> None:
+    if not API_KEY:
+        raise RuntimeError(
+            "Set HF_TOKEN (or OPENAI_API_KEY) in the environment or .env"
         )
 
-    client = AsyncOpenAI(**openai_client_options)
+    client = OpenAI(api_key=API_KEY, base_url=API_BASE_URL)
 
-    async with EarningsAnalystEnv(base_url=environment_base_url) as env:
-        reset_out = await env.reset()
-        observation = reset_out.observation
-        # We pass valid_labels if they exist in the observation/registry
-        # This implementation assumes the client can fetch labels or we hardcode.
-        # For simplicity, we'll try to use labels from metadata if available on reset
-        # Or just use None for regression.
-        valid_labels = getattr(observation, "label_values", None)
+    if IMAGE_NAME:
+        env = await EarningsAnalystEnv.from_docker_image(IMAGE_NAME)
+    else:
+        env = EarningsAnalystEnv(base_url=ENV_SERVER_URL)
 
-        predicted, response_text = await predict_with_openai(
-            observation, client=client, model=model_name, valid_labels=valid_labels
-        )
-        step_out = await env.step(EarningsAnalystAction(prediction=predicted))
-        step_observation = step_out.observation
-        ground_truth_label = str(getattr(step_observation, "ground_truth", ""))
+    rewards: list[float] = []
+    steps_taken = 0
+    score = 0.0
+    success = False
 
-        reward = step_out.reward
-        if verbose:
-            print(
-                f"predicted={predicted!r} "
-                f"ground_truth={ground_truth_label!r} reward={reward}"
-            )
-            if response_text and len(response_text) < 2000:
-                print(f"model_response_json={response_text!r}")
-        truncated_response = (
-            response_text if len(response_text) < 4000 else response_text[:4000] + "..."
-        )
-        return EpisodeResult(
-            reward=reward,
-            predicted=predicted,
-            ground_truth=ground_truth_label,
-            done=step_out.done,
-            model_response_text=truncated_response,
-        )
+    log_start(task=TASK_NAME, env=BENCHMARK, model=MODEL_NAME)
 
-
-def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Run one episode via OpenAI + env server (example inference script)"
-    )
-    parser.add_argument(
-        "--base-url",
-        default=os.environ.get("ENV_SERVER_URL", "http://localhost:8000"),
-        help="OpenEnv HTTP base URL",
-    )
-    parser.add_argument("--model", default=os.environ.get("OPENAI_MODEL", "gpt-4o"))
-    parser.add_argument("--quiet", action="store_true", help="Less output")
-    args = parser.parse_args()
     try:
-        asyncio.run(
-            run_episode(
-                base_url=args.base_url,
-                model=args.model,
-                verbose=not args.quiet,
+        reset_out = await env.reset()
+        obs = reset_out.observation
+        valid_labels: list[str] | None = getattr(obs, "label_values", None) or None
+
+        done = reset_out.done
+
+        step = 1
+        while not done:
+            prediction, error = get_prediction(client, obs, valid_labels)
+            step_out = await env.step(EarningsAnalystAction(prediction=prediction))
+
+            reward = step_out.reward or 0.0
+            done = step_out.done
+            rewards.append(reward)
+            steps_taken = step
+
+            log_step(
+                step=step, action=prediction, reward=reward, done=done, error=error
             )
-        )
-    except Exception as e:
-        print(f"error: {e}", file=sys.stderr)
-        sys.exit(1)
+
+            obs = step_out.observation
+            step += 1
+
+        score = float(rewards[-1]) if rewards else 0.0
+        score = min(max(score, 0.0), 1.0)
+        success = score >= SUCCESS_SCORE_THRESHOLD
+
+    finally:
+        try:
+            await env.close()
+        except Exception as exc:
+            pass  # don't let cleanup failure suppress the [END] line
+        log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
