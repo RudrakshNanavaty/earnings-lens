@@ -1,225 +1,168 @@
 """
-Single-episode inference: reset env, call OpenAI, step with prediction string.
-
-Requires a running OpenEnv server (e.g. `uv run server`).
-
-The server must use the same task as your prompt expects (``EARNINGS_ANALYST_TASK_ID``).
-
-Usage:
-    uv run python inference.py
-    # or
-    python inference.py
+EarningsLens Mandatory Inference Script
+=======================================
+Follows the required STDOUT format for hackathon submission.
+Supports all 5 tasks: sentiment_label, 1_day_move, 30_day_move, next_quarter_move, get_figures.
 """
 
-from __future__ import annotations
-
-import argparse
 import asyncio
 import json
 import os
-import sys
-from dataclasses import dataclass
-from typing import Any
+import textwrap
+from typing import List, Optional, Any
 
-from dotenv import load_dotenv
-from openai import AsyncOpenAI
+from openai import OpenAI
+from client import EarningsAnalystEnv
+from models import EarningsAnalystAction
 
-from earnings_analyst.client import EarningsAnalystEnv
-from earnings_analyst.models import EarningsAnalystAction, EarningsAnalystObservation
+# Environment Variables
+IMAGE_NAME = os.getenv("IMAGE_NAME") or os.getenv("LOCAL_IMAGE_NAME")
+API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY") or os.getenv("OPENAI_API_KEY")
+API_BASE_URL = os.getenv("API_BASE_URL") or "https://api.openai.com/v1"
+MODEL_NAME = os.getenv("MODEL_NAME") or "gpt-4o-mini"
+ENV_URL = os.getenv("ENV_SERVER_URL", "http://localhost:8000")
 
-load_dotenv()
+# Task Configuration
+TASK_ID = os.getenv("EARNINGS_ANALYST_TASK_ID", "sentiment_label")
+BENCHMARK = "earnings-lens"
+MAX_STEPS = 1
+SUCCESS_SCORE_THRESHOLD = 0.5
+MAX_TOTAL_REWARD = 1.0  # Max reward for single-step tasks is 1.0
 
-DEFAULT_LABELS = [
-    "very bearish",
-    "bearish",
-    "neutral",
-    "bullish",
-    "very bullish",
-]
+def log_start(task: str, env: str, model: str) -> None:
+    print(f"[START] task={task} env={env} model={model}", flush=True)
 
+def log_step(step: int, action: str, reward: float, done: bool, error: Optional[str]) -> None:
+    error_val = error if error else "null"
+    done_val = str(done).lower()
+    # Masking newline in action for clean STDOUT if it's JSON
+    action_clean = action.replace("\n", " ")
+    print(
+        f"[STEP] step={step} action={action_clean} reward={reward:.2f} done={done_val} error={error_val}",
+        flush=True,
+    )
 
-@dataclass
-class EpisodeResult:
-    reward: float | None
-    predicted: str
-    ground_truth: str
-    done: bool
-    model_response_text: str | None = None
+def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> None:
+    rewards_str = ",".join(f"{r:.2f}" for r in rewards)
+    print(f"[END] success={str(success).lower()} steps={steps} score={score:.3f} rewards={rewards_str}", flush=True)
 
+def build_system_prompt(task_id: str) -> str:
+    """Returns a highly specific system prompt for the financial analyst agent."""
+    prompts = {
+        "sentiment_label": (
+            "You are a financial analyst. Analyze the sentiment of the provided earnings call context. "
+            "Respond with a single JSON object: {\"sentiment\": \"<label>\"}. "
+            "Valid labels: very bearish, bearish, neutral, bullish, very bullish."
+        ),
+        "1_day_move": (
+            "Predict the 1-day stock price movement from the earnings call. "
+            "Respond with a single JSON object: {\"percentage_move\": <float>, \"label\": \"<direction>\"}. "
+            "Label should be 'up' or 'down'."
+        ),
+        "30_day_move": (
+            "Predict the 30-day stock price movement from the earnings call. "
+            "Respond with a single JSON object: {\"percentage_move\": <float>, \"label\": \"<direction>\"}. "
+            "Label should be 'up' or 'down'."
+        ),
+        "next_quarter_move": (
+            "Predict the stock price movement for the next quarter. "
+            "Respond with a single JSON object: {\"percentage_move\": <float>, \"label\": \"<direction>\"}. "
+            "Label should be 'up' or 'down'."
+        ),
+        "get_figures": (
+            "Extract key US-GAAP financial figures. Respond with the requested nested JSON schema "
+            "containing income_statement, balance_sheet, and cash_flow metrics."
+        ),
+    }
+    return prompts.get(task_id, "You are a financial analyst. Respond exactly as instructed.")
 
-def _normalize_prediction(model_text: str, valid: list[str] | None = None) -> str:
-    """Map model output to a canonical label or return as is for regression."""
-    if not valid:
-        return model_text.strip()
-
-    labels = valid
-    normalized_model_text = str(model_text).strip().lower()
-    for canonical_label in labels:
-        if normalized_model_text == canonical_label.lower():
-            return canonical_label
-    for canonical_label in labels:
-        canonical_lower = canonical_label.lower()
-        if (
-            canonical_lower in normalized_model_text
-            or normalized_model_text in canonical_lower
-        ):
-            return canonical_label
-    return "neutral"
-
-
-def build_user_content(obs: EarningsAnalystObservation) -> str:
-    parts: list[str] = [obs.task_instruction]
+def build_user_prompt(obs: Any) -> str:
+    parts = [obs.task_instruction]
     if obs.text_context:
-        parts.append("## Text context (by field name)")
-        for name, text in sorted(obs.text_context.items()):
-            parts.append(f"### {name}\n{text}")
+        parts.append("\nText Context:")
+        for k, v in obs.text_context.items():
+            parts.append(f"{k}: {v[:1000]}...") # Truncate for prompt efficiency
     if obs.numerical_context:
-        parts.append("## Numerical context (JSON)")
-        parts.append(json.dumps(obs.numerical_context, indent=2))
-    return "\n\n".join(parts)
+        parts.append("\nNumerical Context:")
+        parts.append(json.dumps(obs.numerical_context))
+    return "\n".join(parts)
 
-
-async def predict_with_openai(
-    obs: EarningsAnalystObservation,
-    *,
-    client: AsyncOpenAI,
-    model: str,
-    valid_labels: list[str] | None = None,
-) -> tuple[str, str]:
-    """
-    Example Chat Completions call returning a JSON object.
-    """
-    user_content = build_user_content(obs)
-    system_prompt = (
-        "You are a financial analyst assistant. "
-        "Your task is to analyze the provided financial data and respond "
-        "EXACTLY as instructed in the Task Instruction. "
-        "Reply with a single JSON object only, no markdown or extra text."
-    )
-    completion = await client.chat.completions.create(
-        model=model,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_content},
-        ],
-        response_format={"type": "json_object"},
-    )
-    response_text = (completion.choices[0].message.content or "").strip()
-
-    # Try to extract the primary value based on common keys
-    predicted = response_text
+def parse_prediction(text: str, task_id: str) -> str:
+    """Extract the primary prediction string for the env.step() call."""
     try:
-        parsed: dict[str, Any] = json.loads(response_text)
-        if isinstance(parsed, dict):
-            # Check for common return keys
-            for key in ["sentiment", "move", "label", "prediction"]:
-                if key in parsed:
-                    if valid_labels:
-                        predicted = _normalize_prediction(
-                            str(parsed[key]), valid_labels
-                        )
-                    else:
-                        predicted = str(parsed[key])
-                    break
-    except (json.JSONDecodeError, TypeError, ValueError):
-        if valid_labels:
-            predicted = _normalize_prediction(response_text, valid_labels)
+        data = json.loads(text)
+        if task_id == "sentiment_label":
+            return str(data.get("sentiment", "neutral"))
+        if task_id == "get_figures":
+            return text # Grader expects the full JSON
+        # For movement tasks, we return the percentage or a combined string
+        # Our specific graders handle either. I'll pass the full JSON to be safe.
+        return text
+    except Exception:
+        return text
 
-    return predicted, response_text
+async def main() -> None:
+    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
 
+    # Environment initialization
+    if IMAGE_NAME:
+        env = await EarningsAnalystEnv.from_docker_image(IMAGE_NAME)
+    else:
+        env = EarningsAnalystEnv(base_url=ENV_URL)
 
-async def run_episode(
-    *,
-    base_url: str | None = None,
-    openai_api_key: str | None = None,
-    openai_base_url: str | None = None,
-    model: str | None = None,
-    verbose: bool = True,
-) -> EpisodeResult:
-    """
-    One reset → OpenAI prediction → step. Returns reward and metadata from the server.
-    """
-    environment_base_url = base_url or os.environ.get(
-        "ENV_SERVER_URL", "http://localhost:8000"
-    )
-    api_key = openai_api_key or os.environ.get("OPENAI_API_KEY")
-    if not api_key:
-        raise RuntimeError("Set OPENAI_API_KEY in the environment or .env")
+    rewards: List[float] = []
+    steps_taken = 0
+    score = 0.0
+    success = False
 
-    resolved_openai_base_url = openai_base_url or os.environ.get("API_BASE_URL")
-    model_name = model or os.environ.get("OPENAI_MODEL", "gpt-4o")
+    log_start(task=TASK_ID, env=BENCHMARK, model=MODEL_NAME)
 
-    openai_client_options: dict[str, Any] = {"api_key": api_key}
-    if resolved_openai_base_url:
-        openai_client_options["base_url"] = resolved_openai_base_url
-
-    if verbose:
-        print(
-            f"DEBUG: Using base_url={resolved_openai_base_url or 'default'} model={model_name}"
-        )
-
-    client = AsyncOpenAI(**openai_client_options)
-
-    async with EarningsAnalystEnv(base_url=environment_base_url) as env:
-        reset_out = await env.reset()
-        observation = reset_out.observation
-        # We pass valid_labels if they exist in the observation/registry
-        # This implementation assumes the client can fetch labels or we hardcode.
-        # For simplicity, we'll try to use labels from metadata if available on reset
-        # Or just use None for regression.
-        valid_labels = getattr(observation, "label_values", None)
-
-        predicted, response_text = await predict_with_openai(
-            observation, client=client, model=model_name, valid_labels=valid_labels
-        )
-        step_out = await env.step(EarningsAnalystAction(prediction=predicted))
-        step_observation = step_out.observation
-        ground_truth_label = str(getattr(step_observation, "ground_truth", ""))
-
-        reward = step_out.reward
-        if verbose:
-            print(
-                f"predicted={predicted!r} "
-                f"ground_truth={ground_truth_label!r} reward={reward}"
-            )
-            if response_text and len(response_text) < 2000:
-                print(f"model_response_json={response_text!r}")
-        truncated_response = (
-            response_text if len(response_text) < 4000 else response_text[:4000] + "..."
-        )
-        return EpisodeResult(
-            reward=reward,
-            predicted=predicted,
-            ground_truth=ground_truth_label,
-            done=step_out.done,
-            model_response_text=truncated_response,
-        )
-
-
-def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Run one episode via OpenAI + env server (example inference script)"
-    )
-    parser.add_argument(
-        "--base-url",
-        default=os.environ.get("ENV_SERVER_URL", "http://localhost:8000"),
-        help="OpenEnv HTTP base URL",
-    )
-    parser.add_argument("--model", default=os.environ.get("OPENAI_MODEL", "gpt-4o"))
-    parser.add_argument("--quiet", action="store_true", help="Less output")
-    args = parser.parse_args()
     try:
-        asyncio.run(
-            run_episode(
-                base_url=args.base_url,
-                model=args.model,
-                verbose=not args.quiet,
-            )
-        )
-    except Exception as e:
-        print(f"error: {e}", file=sys.stderr)
-        sys.exit(1)
+        # If EarningsAnalystEnv is used with 'async with', it connects. 
+        # Here I simulate the template behavior.
+        async with env:
+            result = await env.reset()
+            obs = result.observation
 
+            system_prompt = build_system_prompt(TASK_ID)
+            user_prompt = build_user_prompt(obs)
+
+            # Model Call
+            completion = client.chat.completions.create(
+                model=MODEL_NAME,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                response_format={"type": "json_object"} if "JSON" in system_prompt or "figures" in TASK_ID else None,
+            )
+            response_text = (completion.choices[0].message.content or "").strip()
+            
+            prediction = parse_prediction(response_text, TASK_ID)
+
+            # Step
+            result = await env.step(EarningsAnalystAction(prediction=prediction))
+            
+            reward = result.reward or 0.0
+            done = result.done
+            
+            rewards.append(reward)
+            steps_taken = 1
+            
+            log_step(step=1, action=prediction, reward=reward, done=done, error=None)
+
+            score = sum(rewards) / MAX_TOTAL_REWARD if MAX_TOTAL_REWARD > 0 else 0.0
+            score = min(max(score, 0.0), 1.0)
+            success = score >= SUCCESS_SCORE_THRESHOLD
+
+    except Exception as exc:
+        print(f"[DEBUG] Inference failed: {exc}", flush=True)
+    finally:
+        try:
+            await env.close()
+        except:
+            pass
+        log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
