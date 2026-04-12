@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 from .exceptions import TaskNotImplementedError
-# Registry exports removed to avoid circular imports during dynamic task loading.
-# Use 'from tasks.registry import ...' instead.
+# Import the registry from ``earnings_analyst.tasks.registry`` (not from this package).
 
 
 __all__ = [
