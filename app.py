@@ -215,6 +215,16 @@ api_app.add_middleware(
     allow_headers=["*"],
 )
 
+from fastapi.responses import RedirectResponse
+
+@api_app.get("/health")
+async def health():
+    return {"status": "ok", "environment": "earnings_analyst"}
+
+@api_app.get("/web")
+async def web_redirect():
+    return RedirectResponse(url="/")
+
 # Import the environment app
 try:
     from earnings_analyst.server.app import app as env_app
