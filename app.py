@@ -10,8 +10,13 @@ from openai import AsyncOpenAI
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 
 try:
-    from earnings_analyst.server.earnings_analyst_environment import EarningsAnalystEnvironment
-    from earnings_analyst.models import EarningsAnalystAction, EarningsAnalystObservation
+    from earnings_analyst.server.earnings_analyst_environment import (
+        EarningsAnalystEnvironment,
+    )
+    from earnings_analyst.models import (
+        EarningsAnalystAction,
+        EarningsAnalystObservation,
+    )
     from earnings_analyst.tasks.registry import TASK_IDS
 except (ImportError, ModuleNotFoundError):
     from server.earnings_analyst_environment import EarningsAnalystEnvironment
@@ -20,13 +25,16 @@ except (ImportError, ModuleNotFoundError):
 
 load_dotenv()
 
+
 class State:
     def __init__(self):
         self.env: Optional[EarningsAnalystEnvironment] = None
         self.obs: Optional[EarningsAnalystObservation] = None
         self.task_id: str = "sentiment_label"
 
+
 state = State()
+
 
 async def reset_env(task_id: str):
     state.task_id = task_id
@@ -39,17 +47,22 @@ async def reset_env(task_id: str):
         for name, text in sorted(state.obs.text_context.items()):
             text_context += f"### {name}\n{text}\n\n"
 
-    numerical_context = json.dumps(state.obs.numerical_context, indent=2) if state.obs.numerical_context else "No numerical data."
+    numerical_context = (
+        json.dumps(state.obs.numerical_context, indent=2)
+        if state.obs.numerical_context
+        else "No numerical data."
+    )
 
     return [
         state.obs.task_instruction,
         text_context,
         numerical_context,
-        gr.update(visible=True), # Prediction row
-        gr.update(visible=False), # Result row
-        "", # Prediction input
-        "", # Log/Message
+        gr.update(visible=True),  # Prediction row
+        gr.update(visible=False),  # Result row
+        "",  # Prediction input
+        "",  # Log/Message
     ]
+
 
 async def step_env(prediction: str):
     if not state.env or not state.obs:
@@ -64,9 +77,10 @@ async def step_env(prediction: str):
     result_text = f"**Reward:** {reward:.4f} \n\n**Ground Truth:** {ground_truth}"
 
     return [
-        gr.update(visible=False), # Hide prediction row
-        gr.update(visible=True, value=result_text), # Show result row
+        gr.update(visible=False),  # Hide prediction row
+        gr.update(visible=True, value=result_text),  # Show result row
     ]
+
 
 async def run_agent(task_id: str, api_key: str, model: str, base_url: str):
     if not api_key:
@@ -88,7 +102,9 @@ async def run_agent(task_id: str, api_key: str, model: str, base_url: str):
         for name, text in sorted(state.obs.text_context.items()):
             user_content += f"### {name}\n{text}\n"
     if state.obs.numerical_context:
-        user_content += f"\n## Numerical context\n{json.dumps(state.obs.numerical_context)}\n"
+        user_content += (
+            f"\n## Numerical context\n{json.dumps(state.obs.numerical_context)}\n"
+        )
 
     system_prompt = (
         "You are a financial analyst assistant. "
@@ -117,14 +133,18 @@ async def run_agent(task_id: str, api_key: str, model: str, base_url: str):
         # step_out: [pred_row, res_row]
 
         return [
-            out[0], out[1], out[2],
-            step_out[0], step_out[1],
+            out[0],
+            out[1],
+            out[2],
+            step_out[0],
+            step_out[1],
             prediction,
-            f"Agent used {model}. Raw response: {response_text}"
+            f"Agent used {model}. Raw response: {response_text}",
         ]
 
     except Exception as e:
         return [out[0], out[1], out[2], out[3], out[4], "", f"Error: {str(e)}"]
+
 
 # Custom CSS for a premium look
 custom_css = """
@@ -146,19 +166,32 @@ with gr.Blocks(css=custom_css, title="Earnings Analyst - OpenEnv") as demo:
     with gr.Column(elem_classes="container"):
         with gr.Column(elem_classes="header"):
             gr.Markdown("# 🏑 Earnings Analyst")
-            gr.Markdown("Interactive environment for financial analysis tasks using [OpenEnv](https://github.com/meta-pytorch/OpenEnv). Evaluate agents or your own analysis on earnings call data.")
+            gr.Markdown(
+                "Interactive environment for financial analysis tasks using [OpenEnv](https://github.com/meta-pytorch/OpenEnv). Evaluate agents or your own analysis on earnings call data."
+            )
 
         with gr.Row():
             with gr.Column(scale=1):
                 with gr.Group():
-                    task_select = gr.Dropdown(choices=TASK_IDS, value="sentiment_label", label="Active Task")
+                    task_select = gr.Dropdown(
+                        choices=TASK_IDS, value="sentiment_label", label="Active Task"
+                    )
                     reset_btn = gr.Button("🔄 New Episode", variant="primary")
 
                 gr.Markdown("### 🤖 Auto-Agent Settings")
                 with gr.Group():
-                    api_key = gr.Textbox(label="OpenAI API Key", type="password", placeholder="sk-...", value=os.environ.get("OPENAI_API_KEY", ""))
+                    api_key = gr.Textbox(
+                        label="OpenAI API Key",
+                        type="password",
+                        placeholder="sk-...",
+                        value=os.environ.get("OPENAI_API_KEY", ""),
+                    )
                     model_name = gr.Textbox(label="Model", value="gpt-4o-mini")
-                    base_url = gr.Textbox(label="Base URL (optional)", placeholder="https://api.openai.com/v1", value=os.environ.get("OPENAI_BASE_URL", ""))
+                    base_url = gr.Textbox(
+                        label="Base URL (optional)",
+                        placeholder="https://api.openai.com/v1",
+                        value=os.environ.get("API_BASE_URL", ""),
+                    )
                     agent_btn = gr.Button("🚀 Run LLM Agent", variant="secondary")
 
             with gr.Column(scale=2):
@@ -171,33 +204,56 @@ with gr.Blocks(css=custom_css, title="Earnings Analyst - OpenEnv") as demo:
                                 text_view = gr.Markdown(elem_classes="context-box")
                             with gr.Column():
                                 gr.Markdown("#### Numerical Context")
-                                num_view = gr.Code(label="JSON", language="json", elem_classes="context-box")
+                                num_view = gr.Code(
+                                    label="JSON",
+                                    language="json",
+                                    elem_classes="context-box",
+                                )
 
                     with gr.TabItem("Analysis"):
                         with gr.Column(visible=False) as prediction_row:
-                            pred_input = gr.Textbox(label="Your Prediction / Analysis Output", placeholder="e.g. bullish, or 0.05")
+                            pred_input = gr.Textbox(
+                                label="Your Prediction / Analysis Output",
+                                placeholder="e.g. bullish, or 0.05",
+                            )
                             submit_btn = gr.Button("Submit Analysis", variant="primary")
 
                         result_view = gr.Markdown(visible=False, elem_classes="card")
-                        message_view = gr.Textbox(label="Agent Log / Error Messages", interactive=False)
+                        message_view = gr.Textbox(
+                            label="Agent Log / Error Messages", interactive=False
+                        )
 
     # Event handlers
     reset_btn.click(
         fn=reset_env,
         inputs=[task_select],
-        outputs=[instr_view, text_view, num_view, prediction_row, result_view, pred_input, message_view]
+        outputs=[
+            instr_view,
+            text_view,
+            num_view,
+            prediction_row,
+            result_view,
+            pred_input,
+            message_view,
+        ],
     )
 
     submit_btn.click(
-        fn=step_env,
-        inputs=[pred_input],
-        outputs=[prediction_row, result_view]
+        fn=step_env, inputs=[pred_input], outputs=[prediction_row, result_view]
     )
 
     agent_btn.click(
         fn=run_agent,
         inputs=[task_select, api_key, model_name, base_url],
-        outputs=[instr_view, text_view, num_view, prediction_row, result_view, pred_input, message_view]
+        outputs=[
+            instr_view,
+            text_view,
+            num_view,
+            prediction_row,
+            result_view,
+            pred_input,
+            message_view,
+        ],
     )
 
 from fastapi import FastAPI
@@ -216,13 +272,16 @@ api_app.add_middleware(
 
 from fastapi.responses import RedirectResponse
 
+
 @api_app.get("/health")
 async def health():
     return {"status": "ok", "environment": "earnings_analyst"}
 
+
 @api_app.get("/web")
 async def web_redirect():
     return RedirectResponse(url="/")
+
 
 # Import the environment app
 try:
@@ -238,9 +297,12 @@ api_app.mount("/api", env_app)
 # Wrap Gradio with FastAPI
 app = gr.mount_gradio_app(api_app, demo, path="/")
 
+
 def main():
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
 
 if __name__ == "__main__":
     main()
