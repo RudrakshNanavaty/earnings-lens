@@ -19,19 +19,14 @@ class EarningsAnalystEnv(
     enabling efficient multi-step interactions with lower latency.
     Each client instance has its own dedicated environment session on the server.
 
-    Example (async):
+    Example:
         >>> # Connect to a running server
-        >>> async def demo():
-        ...     async with EarningsAnalystEnv(base_url="http://localhost:8000") as client:
-        ...         result = await client.reset()
-        ...         print(result.observation.task_instruction)
-        ...         result = await client.step(EarningsAnalystAction(prediction="neutral"))
-        ...         print(result.observation.metadata)
-
-    Example (sync wrapper):
-        >>> with EarningsAnalystEnv(base_url="http://localhost:8000").sync() as client:
-        ...     result = client.reset()
-        ...     result = client.step(EarningsAnalystAction(prediction="neutral"))
+        >>> async with EarningsAnalystEnv(base_url="http://localhost:8000") as client:
+        ...     result = await client.reset()
+        ...     print(result.observation.task_instruction)
+        ...
+        ...     result = await client.step(EarningsAnalystAction(prediction="neutral"))
+        ...     print(result.observation.metadata)
 
     Example with Docker:
         >>> # Automatically start container and connect

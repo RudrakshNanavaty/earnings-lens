@@ -7,14 +7,12 @@ must match what you are measuring; ``--task`` here selects which task spec is us
 Usage:
     uv run python evaluate.py
     uv run python evaluate.py --samples 50 --quiet
-    uv run python evaluate.py --samples 10 --csv runs.csv
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
-import csv
 import os
 import sys
 from collections import defaultdict
@@ -49,7 +47,6 @@ async def run_evaluation(
     model: str | None,
     task_id: str,
     quiet: bool,
-    csv_path: str | None,
 ) -> None:
     spec = TASKS.get(task_id) or TASKS[DEFAULT_TASK]
     label_values = list(spec["label_values"])
@@ -60,9 +57,6 @@ async def run_evaluation(
     per_ground_truth_label: dict[str, dict[str, int]] = defaultdict(
         lambda: {"n": 0, "correct": 0}
     )
-
-    resolved_model = model or os.environ.get("OPENAI_MODEL", "gpt-4o")
-    session_rows: list[dict[str, object]] = []
 
     for episode_index in range(samples):
         if not quiet:

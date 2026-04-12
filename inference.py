@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from dotenv import load_dotenv
-from openai import OpenAI
+from openai import AsyncOpenAI
 
 try:
     from earnings_analyst.client import EarningsAnalystEnv
@@ -83,10 +83,10 @@ def build_user_content(obs: EarningsAnalystObservation) -> str:
     return "\n\n".join(parts)
 
 
-def predict_with_openai(
+async def predict_with_openai(
     obs: EarningsAnalystObservation,
     *,
-    client: OpenAI,
+    client: AsyncOpenAI,
     model: str,
     valid_labels: list[str] | None = None,
 ) -> tuple[str, str]:
@@ -104,7 +104,7 @@ def predict_with_openai(
         + ", ".join(f'"{lab}"' for lab in labels)
         + "."
     )
-    completion = client.chat.completions.create(
+    completion = await client.chat.completions.create(
         model=model,
         messages=[
             {"role": "system", "content": system_prompt},
@@ -133,8 +133,6 @@ async def run_episode(
 ) -> EpisodeResult:
     """
     One reset → OpenAI prediction → step. Returns reward and metadata from the server.
-
-    Uses async :class:`EarningsAnalystEnv` (``async with`` / ``await``).
     """
     environment_base_url = base_url or os.environ.get(
         "ENV_SERVER_URL", "http://localhost:8000"
@@ -149,12 +147,12 @@ async def run_episode(
     openai_client_options: dict[str, Any] = {"api_key": api_key}
     if resolved_openai_base_url:
         openai_client_options["base_url"] = resolved_openai_base_url
-    client = OpenAI(**openai_client_options)
+    client = AsyncOpenAI(**openai_client_options)
 
     async with EarningsAnalystEnv(base_url=environment_base_url) as env:
         reset_out = await env.reset()
         observation = reset_out.observation
-        predicted, response_text = predict_with_openai(
+        predicted, response_text = await predict_with_openai(
             observation, client=client, model=model_name
         )
         step_out = await env.step(EarningsAnalystAction(prediction=predicted))
@@ -181,7 +179,7 @@ async def run_episode(
         )
 
 
-async def _async_main() -> None:
+def main() -> None:
     parser = argparse.ArgumentParser(
         description="Run one episode via OpenAI + env server (example inference script)"
     )
@@ -193,16 +191,14 @@ async def _async_main() -> None:
     parser.add_argument("--model", default=os.environ.get("OPENAI_MODEL", "gpt-4o"))
     parser.add_argument("--quiet", action="store_true", help="Less output")
     args = parser.parse_args()
-    await run_episode(
-        base_url=args.base_url,
-        model=args.model,
-        verbose=not args.quiet,
-    )
-
-
-def main() -> None:
     try:
-        asyncio.run(_async_main())
+        asyncio.run(
+            run_episode(
+                base_url=args.base_url,
+                model=args.model,
+                verbose=not args.quiet,
+            )
+        )
     except Exception as e:
         print(f"error: {e}", file=sys.stderr)
         sys.exit(1)
