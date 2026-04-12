@@ -1,0 +1,15 @@
+sample_index,task_id,model,predicted,ground_truth,exact_match,reward,done,model_response
+1,sentiment_label,gemini-2.5-flash,very bullish,,False,1.0,True,"{
+  ""sentiment"": ""very bullish""
+}"
+2,sentiment_label,gemini-2.5-flash,bullish,,False,1.0,True,"{
+  ""sentiment"": ""bullish""
+}"
+3,sentiment_label,gemini-2.5-flash,bullish,,False,1.0,True,"{""sentiment"": ""bullish""}"
+4,sentiment_label,gemini-2.5-flash,very bullish,,False,0.5,True,"{""sentiment"": ""very bullish""}"
+5,sentiment_label,gemini-2.5-flash,bearish,,False,0.5,True,"{""sentiment"": ""bearish""}"
+6,sentiment_label,gemini-2.5-flash,bearish,,False,0.5,True,"{""sentiment"": ""bearish""}"
+7,sentiment_label,gemini-2.5-flash,bearish,,False,0.5,True,"{""sentiment"": ""bearish""}"
+8,sentiment_label,gemini-2.5-flash,very bearish,,False,0.0,True,"{""sentiment"": ""very bearish""}"
+9,sentiment_label,gemini-2.5-flash,bullish,,False,0.0,True,"{""sentiment"": ""bullish""}"
+10,sentiment_label,gemini-2.5-flash,bullish,,False,0.0,True,"{""sentiment"": ""bullish""}"

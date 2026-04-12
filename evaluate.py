@@ -7,12 +7,14 @@ must match what you are measuring; ``--task`` here selects which task spec is us
 Usage:
     uv run python evaluate.py
     uv run python evaluate.py --samples 50 --quiet
+    uv run python evaluate.py --samples 10 -o results.csv
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
+import csv
 import os
 import sys
 from collections import defaultdict
@@ -40,6 +42,19 @@ def confusion_key(predicted_label: str, ground_truth_label: str) -> tuple[str, s
     )
 
 
+_CSV_FIELDNAMES = (
+    "sample_index",
+    "task_id",
+    "model",
+    "predicted",
+    "ground_truth",
+    "exact_match",
+    "reward",
+    "done",
+    "model_response",
+)
+
+
 async def run_evaluation(
     *,
     samples: int,
@@ -47,9 +62,11 @@ async def run_evaluation(
     model: str | None,
     task_id: str,
     quiet: bool,
+    output_path: str | None,
 ) -> None:
     spec = TASKS.get(task_id) or TASKS[DEFAULT_TASK]
     label_values = list(spec["label_values"])
+    resolved_model = model or os.environ.get("OPENAI_MODEL", "gpt-4o")
 
     rewards: list[float] = []
     exact_match_count = 0
@@ -57,6 +74,7 @@ async def run_evaluation(
     per_ground_truth_label: dict[str, dict[str, int]] = defaultdict(
         lambda: {"n": 0, "correct": 0}
     )
+    csv_rows: list[dict[str, str | int | float | bool]] = []
 
     for episode_index in range(samples):
         if not quiet:
@@ -72,13 +90,28 @@ async def run_evaluation(
         rewards.append(episode_reward)
         ground_truth_label = episode_result.ground_truth
         predicted_label = episode_result.predicted
-        if exact_match(predicted_label, ground_truth_label):
+        is_exact = exact_match(predicted_label, ground_truth_label)
+        if is_exact:
             exact_match_count += 1
         confusion[confusion_key(predicted_label, ground_truth_label)] += 1
         normalized_ground_truth = _normalize_label(ground_truth_label)
         per_ground_truth_label[normalized_ground_truth]["n"] += 1
-        if exact_match(predicted_label, ground_truth_label):
+        if is_exact:
             per_ground_truth_label[normalized_ground_truth]["correct"] += 1
+
+        csv_rows.append(
+            {
+                "sample_index": episode_index + 1,
+                "task_id": task_id,
+                "model": resolved_model,
+                "predicted": predicted_label,
+                "ground_truth": ground_truth_label,
+                "exact_match": is_exact,
+                "reward": episode_reward,
+                "done": episode_result.done,
+                "model_response": episode_result.model_response_text or "",
+            }
+        )
 
     mean_reward = sum(rewards) / len(rewards) if rewards else 0.0
     exact_accuracy = exact_match_count / samples if samples else 0.0
@@ -118,6 +151,13 @@ async def run_evaluation(
         )
         print(f"  truth={truth_normalized!r}: {parts}")
 
+    if output_path:
+        with open(output_path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=_CSV_FIELDNAMES)
+            writer.writeheader()
+            writer.writerows(csv_rows)
+        print(f"\nWrote {len(csv_rows)} row(s) to {output_path}")
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(
@@ -137,6 +177,13 @@ def main() -> None:
     parser.add_argument(
         "--quiet", action="store_true", help="Suppress per-episode lines"
     )
+    parser.add_argument(
+        "-o",
+        "--output",
+        default=None,
+        metavar="PATH",
+        help="Write one row per episode to this CSV file (UTF-8)",
+    )
     args = parser.parse_args()
     try:
         asyncio.run(
@@ -146,6 +193,7 @@ def main() -> None:
                 model=args.model,
                 task_id=args.task,
                 quiet=args.quiet,
+                output_path=args.output,
             )
         )
     except Exception as e:
