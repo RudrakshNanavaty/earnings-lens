@@ -1,9 +1,8 @@
 import os
 import sys
-import asyncio
 import json
 import gradio as gr
-from typing import Optional, Dict, Any, List
+from typing import Optional
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
 
@@ -13,11 +12,11 @@ sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 try:
     from earnings_analyst.server.earnings_analyst_environment import EarningsAnalystEnvironment
     from earnings_analyst.models import EarningsAnalystAction, EarningsAnalystObservation
-    from earnings_analyst.tasks.registry import TASK_IDS, TASKS
+    from earnings_analyst.tasks.registry import TASK_IDS
 except (ImportError, ModuleNotFoundError):
     from server.earnings_analyst_environment import EarningsAnalystEnvironment
     from models import EarningsAnalystAction, EarningsAnalystObservation
-    from tasks.registry import TASK_IDS, TASKS
+    from tasks.registry import TASK_IDS
 
 load_dotenv()
 
@@ -33,15 +32,15 @@ async def reset_env(task_id: str):
     state.task_id = task_id
     state.env = EarningsAnalystEnvironment(task_id=task_id)
     state.obs = state.env.reset()
-    
+
     # Format observation for display
     text_context = ""
     if state.obs.text_context:
         for name, text in sorted(state.obs.text_context.items()):
             text_context += f"### {name}\n{text}\n\n"
-            
+
     numerical_context = json.dumps(state.obs.numerical_context, indent=2) if state.obs.numerical_context else "No numerical data."
-    
+
     return [
         state.obs.task_instruction,
         text_context,
@@ -55,15 +54,15 @@ async def reset_env(task_id: str):
 async def step_env(prediction: str):
     if not state.env or not state.obs:
         return [gr.update(), "Error: Environment not initialized. Click Reset."]
-    
+
     action = EarningsAnalystAction(prediction=prediction)
     state.obs = state.env.step(action)
-    
+
     reward = state.obs.reward
     ground_truth = getattr(state.obs, "ground_truth", "N/A")
-    
+
     result_text = f"**Reward:** {reward:.4f} \n\n**Ground Truth:** {ground_truth}"
-    
+
     return [
         gr.update(visible=False), # Hide prediction row
         gr.update(visible=True, value=result_text), # Show result row
@@ -72,17 +71,17 @@ async def step_env(prediction: str):
 async def run_agent(task_id: str, api_key: str, model: str, base_url: str):
     if not api_key:
         return [gr.update()] * 6 + ["Please provide an API Key."]
-    
+
     # 1. Reset
     out = await reset_env(task_id)
-    
+
     # 2. Predict with LLM
     client_params = {"api_key": api_key}
     if base_url:
         client_params["base_url"] = base_url
-    
+
     client = AsyncOpenAI(**client_params)
-    
+
     user_content = f"{state.obs.task_instruction}\n\n"
     if state.obs.text_context:
         user_content += "## Text context\n"
@@ -90,13 +89,13 @@ async def run_agent(task_id: str, api_key: str, model: str, base_url: str):
             user_content += f"### {name}\n{text}\n"
     if state.obs.numerical_context:
         user_content += f"\n## Numerical context\n{json.dumps(state.obs.numerical_context)}\n"
-        
+
     system_prompt = (
         "You are a financial analyst assistant. "
         "Analyze the data and respond EXACTLY as instructed. "
         "Reply with a single JSON object containing 'prediction' key."
     )
-    
+
     try:
         completion = await client.chat.completions.create(
             model=model,
@@ -109,31 +108,31 @@ async def run_agent(task_id: str, api_key: str, model: str, base_url: str):
         response_text = completion.choices[0].message.content or "{}"
         parsed = json.loads(response_text)
         prediction = str(parsed.get("prediction", response_text))
-        
+
         # 3. Step
         step_out = await step_env(prediction)
-        
+
         # Update UI components
         # out: [instr, text, num, pred_row, res_row, pred_input, msg]
         # step_out: [pred_row, res_row]
-        
+
         return [
-            out[0], out[1], out[2], 
-            step_out[0], step_out[1], 
-            prediction, 
+            out[0], out[1], out[2],
+            step_out[0], step_out[1],
+            prediction,
             f"Agent used {model}. Raw response: {response_text}"
         ]
-        
+
     except Exception as e:
         return [out[0], out[1], out[2], out[3], out[4], "", f"Error: {str(e)}"]
 
 # Custom CSS for a premium look
 custom_css = """
 footer {visibility: hidden}
-.container { 
-    max-width: 1100px; 
-    margin: auto; 
-    padding-top: 2rem; 
+.container {
+    max-width: 1100px;
+    margin: auto;
+    padding-top: 2rem;
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
 }
 .header { text-align: center; margin-bottom: 2rem; }
@@ -154,7 +153,7 @@ with gr.Blocks(css=custom_css, title="Earnings Analyst - OpenEnv") as demo:
                 with gr.Group():
                     task_select = gr.Dropdown(choices=TASK_IDS, value="sentiment_label", label="Active Task")
                     reset_btn = gr.Button("🔄 New Episode", variant="primary")
-                    
+
                 gr.Markdown("### 🤖 Auto-Agent Settings")
                 with gr.Group():
                     api_key = gr.Textbox(label="OpenAI API Key", type="password", placeholder="sk-...", value=os.environ.get("OPENAI_API_KEY", ""))
@@ -173,12 +172,12 @@ with gr.Blocks(css=custom_css, title="Earnings Analyst - OpenEnv") as demo:
                             with gr.Column():
                                 gr.Markdown("#### Numerical Context")
                                 num_view = gr.Code(label="JSON", language="json", elem_classes="context-box")
-                    
+
                     with gr.TabItem("Analysis"):
                         with gr.Column(visible=False) as prediction_row:
                             pred_input = gr.Textbox(label="Your Prediction / Analysis Output", placeholder="e.g. bullish, or 0.05")
                             submit_btn = gr.Button("Submit Analysis", variant="primary")
-                        
+
                         result_view = gr.Markdown(visible=False, elem_classes="card")
                         message_view = gr.Textbox(label="Agent Log / Error Messages", interactive=False)
 

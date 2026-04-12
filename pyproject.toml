@@ -44,13 +44,6 @@ packages = [
 # Root of this repo is the `earnings_analyst` package (setuptools package-dir `.`).
 package-dir = { "earnings_analyst" = ".", "earnings_analyst.server" = "server", "earnings_analyst.tasks" = "tasks", "earnings_analyst.tasks.get_figures" = "tasks/get_figures", "earnings_analyst.tasks.sentiment_label" = "tasks/sentiment_label", "earnings_analyst.tasks.next_quarter_move" = "tasks/next_quarter_move", "earnings_analyst.tasks.one_day_move" = "tasks/one_day_move", "earnings_analyst.tasks.thirty_day_move" = "tasks/thirty_day_move" }
 
-# Pyright resolves imports from disk; parent on extraPaths makes `earnings_analyst` resolve
-# to this repo folder when it is named `earnings_analyst` (matches setuptools mapping above).
-[tool.pyright]
-pythonVersion = "3.12"
-venvPath = ".venv"
-extraPaths = [".."]
-
 [tool.basedpyright]
 pythonVersion = "3.12"
 venvPath = ".venv"
