@@ -21,7 +21,7 @@ from collections import defaultdict
 
 from dotenv import load_dotenv
 
-from environment_config import DEFAULT_TASK, TASKS
+from earnings_analyst.environment_config import DEFAULT_TASK, TASKS
 from inference import run_episode
 
 load_dotenv()

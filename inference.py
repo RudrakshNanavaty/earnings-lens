@@ -24,15 +24,8 @@ from typing import Any
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
 
-try:
-    from earnings_analyst.client import EarningsAnalystEnv
-    from earnings_analyst.models import (
-        EarningsAnalystAction,
-        EarningsAnalystObservation,
-    )
-except ImportError:
-    from client import EarningsAnalystEnv
-    from models import EarningsAnalystAction, EarningsAnalystObservation
+from earnings_analyst.client import EarningsAnalystEnv
+from earnings_analyst.models import EarningsAnalystAction, EarningsAnalystObservation
 
 load_dotenv()
 

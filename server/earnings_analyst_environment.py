@@ -17,21 +17,12 @@ from uuid import uuid4
 from openenv.core.env_server.interfaces import Environment
 from openenv.core.env_server.types import State
 
-try:
-    from ..environment_config import DEFAULT_TASK, TASKS
-    from ..tasks.exceptions import TaskNotImplementedError
-    from ..tasks.registry import get_grader
-    from ..models import EarningsAnalystAction, EarningsAnalystObservation
-except ImportError:
-    from environment_config import DEFAULT_TASK, TASKS
-    from models import EarningsAnalystAction, EarningsAnalystObservation
-    from tasks.exceptions import TaskNotImplementedError
-    from tasks.registry import get_grader
+from earnings_analyst.environment_config import DEFAULT_TASK, TASKS
+from earnings_analyst.models import EarningsAnalystAction, EarningsAnalystObservation
+from earnings_analyst.tasks.exceptions import TaskNotImplementedError
+from earnings_analyst.tasks.registry import get_grader
 
-try:
-    from .dataset_loader import dataset
-except ImportError:
-    from server.dataset_loader import dataset
+from .dataset_loader import dataset
 
 
 def _resolve_task_id(explicit: str | None) -> str:
