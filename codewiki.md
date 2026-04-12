@@ -1,7 +1,7 @@
 # Earnings Lens — Code Wiki
 
-> Package: `openenv-earnings_analyst` v0.1.0  
-> Repo: `RudrakshNanavaty/earnings-lens`  
+> Package: `openenv-earnings_analyst` v0.1.0
+> Repo: `RudrakshNanavaty/earnings-lens`
 > Python ≥ 3.12 · Dependency manager: `uv`
 
 ---
@@ -352,7 +352,7 @@ DEFAULT_TASK = "sentiment_label"
 
 `GradingFn` type alias: `Callable[[str, str, list[str]], float]` — `(predicted, ground_truth, label_values) → reward`.
 
-**Why `load_task_subpackage()`?**  
+**Why `load_task_subpackage()`?**
 Python module names cannot start with a digit. Folders `1_day_move` and `30_day_move` are not importable via `import tasks.1_day_move`. `loader.py` uses `importlib.util.spec_from_file_location` to load them under synthetic qualified names (`earnings_analyst.tasks._pkg_1_day_move`, etc.) and injects them into `sys.modules`.
 
 ### 5.3 Grading helpers
@@ -500,7 +500,7 @@ uv run python evaluate.py --samples 50 --task sentiment_label --quiet
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `OPENAI_API_KEY` | For inference/evaluate | — | Chat Completions key |
-| `OPENAI_BASE_URL` | No | OpenAI default | Custom API base (proxies, Azure, Google OpenAI-compat) |
+| `API_BASE_URL` | No | OpenAI default | Custom API base (proxies, Azure, Google OpenAI-compat) |
 | `OPENAI_MODEL` | No | `gpt-4o` | Model ID for inference scripts |
 | `ENV_SERVER_URL` | No | `http://localhost:8000` | Base URL for `EarningsAnalystEnv` in client scripts |
 | `EARNINGS_ANALYST_TASK_ID` | No | `sentiment_label` | Task loaded at **server startup** |

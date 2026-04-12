@@ -67,7 +67,7 @@ Copy `.env.example` to `.env` and fill in values. `.env` is gitignored.
 | Variable | Required | Purpose |
 |----------|----------|---------|
 | `OPENAI_API_KEY` | For `inference.py` / `evaluate.py` | Chat Completions API key (or provider equivalent). |
-| `OPENAI_BASE_URL` | No | OpenAI-compatible API base (proxies, Azure, Google OpenAI-compat, etc.). |
+| `API_BASE_URL` | No | OpenAI-compatible API base (proxies, Azure, Google OpenAI-compat, etc.). |
 | `OPENAI_MODEL` | No | Model id (default in scripts often `gpt-4o`; see `.env.example`). |
 | `ENV_SERVER_URL` | No | Base URL of the OpenEnv HTTP server (default `http://localhost:8000`). Used by client scripts. |
 | `EARNINGS_ANALYST_TASK_ID` | No | Task id the **server** loads at startup. Must match one of `tasks/registry.py` (e.g. `sentiment_label`, `1_day_move`, `30_day_move`, `next_quarter_move`). |
@@ -238,7 +238,7 @@ If `implemented` is `False`, `reset()` raises `TaskNotImplementedError` with a s
 | `TaskNotImplementedError` on `reset` | Task’s `spec.py` has `implemented: False` — flip when spec and grader are ready. |
 | `Unknown task_id` | Typo in `EARNINGS_ANALYST_TASK_ID` or missing entry in `tasks/registry.py`. |
 | Dataset download errors | Network, Hub downtime, or auth (`huggingface-cli login` / `HF_TOKEN`). |
-| `inference.py` / OpenAI errors | `OPENAI_API_KEY`, `OPENAI_BASE_URL`, and model id; server URL matches `ENV_SERVER_URL`. |
+| `inference.py` / OpenAI errors | `OPENAI_API_KEY`, `API_BASE_URL`, and model id; server URL matches `ENV_SERVER_URL`. |
 | Reward always 0 or odd metrics | Server task and evaluation script disagree; grader vs label format; `inference.py` still sentiment-specific for non-sentiment tasks. |
 
 ---

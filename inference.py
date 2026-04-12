@@ -51,7 +51,7 @@ def _normalize_prediction(model_text: str, valid: list[str] | None = None) -> st
     """Map model output to a canonical label or return as is for regression."""
     if not valid:
         return model_text.strip()
-    
+
     labels = valid
     normalized_model_text = str(model_text).strip().lower()
     for canonical_label in labels:
@@ -105,7 +105,7 @@ async def predict_with_openai(
         response_format={"type": "json_object"},
     )
     response_text = (completion.choices[0].message.content or "").strip()
-    
+
     # Try to extract the primary value based on common keys
     predicted = response_text
     try:
@@ -115,14 +115,16 @@ async def predict_with_openai(
             for key in ["sentiment", "move", "label", "prediction"]:
                 if key in parsed:
                     if valid_labels:
-                        predicted = _normalize_prediction(str(parsed[key]), valid_labels)
+                        predicted = _normalize_prediction(
+                            str(parsed[key]), valid_labels
+                        )
                     else:
                         predicted = str(parsed[key])
                     break
     except (json.JSONDecodeError, TypeError, ValueError):
         if valid_labels:
             predicted = _normalize_prediction(response_text, valid_labels)
-    
+
     return predicted, response_text
 
 
@@ -144,19 +146,19 @@ async def run_episode(
     if not api_key:
         raise RuntimeError("Set OPENAI_API_KEY in the environment or .env")
 
-    resolved_openai_base_url = openai_base_url or os.environ.get("OPENAI_BASE_URL")
+    resolved_openai_base_url = openai_base_url or os.environ.get("API_BASE_URL")
     model_name = model or os.environ.get("OPENAI_MODEL", "gpt-4o")
 
     openai_client_options: dict[str, Any] = {"api_key": api_key}
     if resolved_openai_base_url:
         openai_client_options["base_url"] = resolved_openai_base_url
-    
+
     if verbose:
-        print(f"DEBUG: Using base_url={resolved_openai_base_url or 'default'} model={model_name}")
-    
+        print(
+            f"DEBUG: Using base_url={resolved_openai_base_url or 'default'} model={model_name}"
+        )
+
     client = AsyncOpenAI(**openai_client_options)
-
-
 
     async with EarningsAnalystEnv(base_url=environment_base_url) as env:
         reset_out = await env.reset()
@@ -166,7 +168,7 @@ async def run_episode(
         # For simplicity, we'll try to use labels from metadata if available on reset
         # Or just use None for regression.
         valid_labels = getattr(observation, "label_values", None)
-        
+
         predicted, response_text = await predict_with_openai(
             observation, client=client, model=model_name, valid_labels=valid_labels
         )
