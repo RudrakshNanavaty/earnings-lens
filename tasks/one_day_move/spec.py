@@ -36,11 +36,11 @@ SPEC: TaskSpec = {
         "Return a JSON object matching this exact schema:\n"
         '{"percentage_move": <float>, "label": "<one of: very bearish | bearish | neutral | bullish | very bullish>"}\n\n'
         "Brackets:\n"
-        "- > 7% negative: very bearish\n"
+        "- More than 7% negative: very bearish\n"
         "- 1-7% negative: bearish\n"
         "- -1% to +1%: neutral\n"
         "- 1-7% positive: bullish\n"
-        "- > 7% positive: very bullish\n\n"
+        "- More than 7% positive: very bullish\n\n"
         "Do not include any other keys or explanation."
     ),
     "kind": "regression",
