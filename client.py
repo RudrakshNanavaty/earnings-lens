@@ -6,7 +6,7 @@ from openenv.core import EnvClient
 from openenv.core.client_types import StepResult
 from openenv.core.env_server.types import State
 
-from .models import EarningsAnalystAction, EarningsAnalystObservation
+from models import EarningsAnalystAction, EarningsAnalystObservation
 
 
 class EarningsAnalystEnv(
@@ -53,8 +53,6 @@ class EarningsAnalystEnv(
         }
 
     def _parse_result(self, payload: Dict) -> StepResult[EarningsAnalystObservation]:
-
-
         """
         Parse server response into StepResult[EarningsAnalystObservation].
 
@@ -73,7 +71,6 @@ class EarningsAnalystEnv(
             reward=payload.get("reward"),
             ground_truth=obs_data.get("ground_truth", ""),
             metadata=obs_data.get("metadata", {}),
-
         )
 
         return StepResult(
