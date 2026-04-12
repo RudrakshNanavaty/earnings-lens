@@ -230,12 +230,17 @@ try:
 except (ImportError, ModuleNotFoundError):
     from server.app import app as env_app
 
-# Mount the environment API at /api
+# Mount the environment API at both root and /api for compatibility
+# Root level is needed for OpenEnv standard validation
+api_app.include_router(env_app.router)
 api_app.mount("/api", env_app)
 
 # Wrap Gradio with FastAPI
 app = gr.mount_gradio_app(api_app, demo, path="/")
 
-if __name__ == "__main__":
+def main():
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
+if __name__ == "__main__":
+    main()
