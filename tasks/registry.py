@@ -3,10 +3,8 @@ Central registry of all tasks.
 
 Add a new task:
 1. Create ``tasks/<folder>/`` with ``spec.py``, ``grader.py``, and ``__init__.py``
-   exporting ``SPEC`` and ``grade``. If the folder name is not a valid Python
-   identifier (e.g. ``1_day_move``), register it via ``load_task_subpackage`` in
-   this file.
-2. Append ``(SPEC, grade)`` to ``_TASK_ENTRIES``.
+   exporting ``SPEC`` and ``grade``.
+2. Import the package below and append ``(SPEC, grade)`` to ``_TASK_ENTRIES``.
 """
 
 from __future__ import annotations
@@ -14,27 +12,23 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Final
 
-from . import get_figures, next_quarter_move, sentiment_label
-from .loader import load_task_subpackage
+from . import (
+    get_figures,
+    sentiment_label,
+    one_day_move,
+    thirty_day_move,
+    next_quarter_move,
+)
 from .types import TaskSpec
 
 GradingFn = Callable[[str, str, list[str]], float]
 
-_pkg_1_day_move = load_task_subpackage(
-    "1_day_move",
-    "earnings_analyst.tasks._pkg_1_day_move",
-)
-_pkg_30_day_move = load_task_subpackage(
-    "30_day_move",
-    "earnings_analyst.tasks._pkg_30_day_move",
-)
-
 _TASK_ENTRIES: list[tuple[TaskSpec, GradingFn]] = [
-    (sentiment_label.SPEC, sentiment_label.grade),
-    (_pkg_1_day_move.SPEC, _pkg_1_day_move.grade),
-    (_pkg_30_day_move.SPEC, _pkg_30_day_move.grade),
-    (next_quarter_move.SPEC, next_quarter_move.grade),
     (get_figures.SPEC, get_figures.grade),
+    (sentiment_label.SPEC, sentiment_label.grade),
+    (one_day_move.SPEC, one_day_move.grade),
+    (thirty_day_move.SPEC, thirty_day_move.grade),
+    (next_quarter_move.SPEC, next_quarter_move.grade),
 ]
 
 
