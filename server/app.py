@@ -24,17 +24,13 @@ Usage:
 
 try:
     from openenv.core.env_server.http_server import create_app
-except Exception as e:  # pragma: no cover
+except (ImportError, ModuleNotFoundError) as e:  # pragma: no cover
     raise ImportError(
         "openenv is required for the web interface. Install dependencies with '\n    uv sync\n'"
     ) from e
 
-try:
-    from ..models import EarningsAnalystAction, EarningsAnalystObservation
-    from .earnings_analyst_environment import EarningsAnalystEnvironment
-except (ImportError, ModuleNotFoundError):
-    from models import EarningsAnalystAction, EarningsAnalystObservation
-    from server.earnings_analyst_environment import EarningsAnalystEnvironment
+from earnings_analyst.models import EarningsAnalystAction, EarningsAnalystObservation
+from earnings_analyst.server.earnings_analyst_environment import EarningsAnalystEnvironment
 
 
 # Create the app with web interface and README integration
