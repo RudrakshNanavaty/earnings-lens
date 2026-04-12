@@ -32,7 +32,7 @@ except Exception as e:  # pragma: no cover
 try:
     from ..models import EarningsAnalystAction, EarningsAnalystObservation
     from .earnings_analyst_environment import EarningsAnalystEnvironment
-except ModuleNotFoundError:
+except (ImportError, ModuleNotFoundError):
     from models import EarningsAnalystAction, EarningsAnalystObservation
     from server.earnings_analyst_environment import EarningsAnalystEnvironment
 

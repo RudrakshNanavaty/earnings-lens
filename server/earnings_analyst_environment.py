@@ -134,18 +134,20 @@ class EarningsAnalystEnvironment(Environment):
             )
         )
 
+
         return EarningsAnalystObservation(
             text_context={},
             numerical_context={},
             task_instruction=self._cfg["task_instruction"],
             done=True,
             reward=reward,
+            ground_truth=ground_truth,
             metadata={
                 "task_id": self._task_id,
                 "predicted": action.prediction,
-                "ground_truth": ground_truth,
             },
         )
+
 
     @property
     def state(self) -> State:

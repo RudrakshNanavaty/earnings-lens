@@ -53,6 +53,8 @@ class EarningsAnalystEnv(
         }
 
     def _parse_result(self, payload: Dict) -> StepResult[EarningsAnalystObservation]:
+
+
         """
         Parse server response into StepResult[EarningsAnalystObservation].
 
@@ -69,7 +71,9 @@ class EarningsAnalystEnv(
             task_instruction=obs_data.get("task_instruction", ""),
             done=payload.get("done", False),
             reward=payload.get("reward"),
+            ground_truth=obs_data.get("ground_truth", ""),
             metadata=obs_data.get("metadata", {}),
+
         )
 
         return StepResult(

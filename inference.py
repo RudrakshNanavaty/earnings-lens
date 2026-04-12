@@ -54,9 +54,12 @@ class EpisodeResult:
     model_response_text: str | None = None
 
 
-def _normalize_sentiment(model_text: str, valid: list[str] | None = None) -> str:
-    """Map model output to a canonical label; fallback to neutral."""
-    labels = valid or DEFAULT_LABELS
+def _normalize_prediction(model_text: str, valid: list[str] | None = None) -> str:
+    """Map model output to a canonical label or return as is for regression."""
+    if not valid:
+        return model_text.strip()
+    
+    labels = valid
     normalized_model_text = str(model_text).strip().lower()
     for canonical_label in labels:
         if normalized_model_text == canonical_label.lower():
@@ -91,18 +94,14 @@ async def predict_with_openai(
     valid_labels: list[str] | None = None,
 ) -> tuple[str, str]:
     """
-    Example Chat Completions call returning a JSON object; maps to a canonical label.
-
-    Replace or parameterize this when you implement tasks beyond placeholder demos.
+    Example Chat Completions call returning a JSON object.
     """
-    labels = valid_labels or DEFAULT_LABELS
     user_content = build_user_content(obs)
     system_prompt = (
         "You are a financial analyst assistant. "
-        "Reply with a single JSON object only, no markdown or extra text, "
-        'with key "sentiment" whose value is exactly one of: '
-        + ", ".join(f'"{lab}"' for lab in labels)
-        + "."
+        "Your task is to analyze the provided financial data and respond "
+        "EXACTLY as instructed in the Task Instruction. "
+        "Reply with a single JSON object only, no markdown or extra text."
     )
     completion = await client.chat.completions.create(
         model=model,
@@ -113,13 +112,24 @@ async def predict_with_openai(
         response_format={"type": "json_object"},
     )
     response_text = (completion.choices[0].message.content or "").strip()
-    predicted = "neutral"
+    
+    # Try to extract the primary value based on common keys
+    predicted = response_text
     try:
         parsed: dict[str, Any] = json.loads(response_text)
-        if isinstance(parsed, dict) and "sentiment" in parsed:
-            predicted = _normalize_sentiment(str(parsed["sentiment"]), labels)
+        if isinstance(parsed, dict):
+            # Check for common return keys
+            for key in ["sentiment", "move", "label", "prediction"]:
+                if key in parsed:
+                    if valid_labels:
+                        predicted = _normalize_prediction(str(parsed[key]), valid_labels)
+                    else:
+                        predicted = str(parsed[key])
+                    break
     except (json.JSONDecodeError, TypeError, ValueError):
-        predicted = _normalize_sentiment(response_text, labels)
+        if valid_labels:
+            predicted = _normalize_prediction(response_text, valid_labels)
+    
     return predicted, response_text
 
 
@@ -147,18 +157,30 @@ async def run_episode(
     openai_client_options: dict[str, Any] = {"api_key": api_key}
     if resolved_openai_base_url:
         openai_client_options["base_url"] = resolved_openai_base_url
+    
+    if verbose:
+        print(f"DEBUG: Using base_url={resolved_openai_base_url or 'default'} model={model_name}")
+    
     client = AsyncOpenAI(**openai_client_options)
+
+
 
     async with EarningsAnalystEnv(base_url=environment_base_url) as env:
         reset_out = await env.reset()
         observation = reset_out.observation
+        # We pass valid_labels if they exist in the observation/registry
+        # This implementation assumes the client can fetch labels or we hardcode.
+        # For simplicity, we'll try to use labels from metadata if available on reset
+        # Or just use None for regression.
+        valid_labels = getattr(observation, "label_values", None)
+        
         predicted, response_text = await predict_with_openai(
-            observation, client=client, model=model_name
+            observation, client=client, model=model_name, valid_labels=valid_labels
         )
         step_out = await env.step(EarningsAnalystAction(prediction=predicted))
         step_observation = step_out.observation
-        observation_metadata = getattr(step_observation, "metadata", None) or {}
-        ground_truth_label = str(observation_metadata.get("ground_truth", ""))
+        ground_truth_label = str(getattr(step_observation, "ground_truth", ""))
+
         reward = step_out.reward
         if verbose:
             print(

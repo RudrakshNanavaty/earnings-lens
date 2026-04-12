@@ -82,7 +82,8 @@ async def run_evaluation(
         episode_result = await run_episode(
             base_url=base_url,
             model=model,
-            verbose=False,
+            verbose=True,
+
         )
         episode_reward = float(
             episode_result.reward if episode_result.reward is not None else 0.0

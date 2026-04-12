@@ -94,3 +94,32 @@ def grade_exact(
     if _normalize_text(predicted) == _normalize_text(ground_truth):
         return 1.0
     return 0.0
+
+
+def grade_regression(
+    predicted: str,
+    ground_truth: str,
+    scale: float = 0.1,
+) -> float:
+    """
+    Score a numerical prediction: exp(-abs(pred - gt) / scale).
+    Returns 1.0 for exact, decaying towards 0.0.
+    """
+    import math
+
+    try:
+        # Ground truth is passed as str(float) from the environment
+        gt_val = float(ground_truth)
+    except (ValueError, TypeError):
+        return 0.0
+
+    # Try to parse predicted as a pure number if it's not JSON
+    # (Though usually the task asks for JSON)
+    try:
+        pred_val = float(predicted)
+    except (ValueError, TypeError):
+        # Fallback: try to find a number in the string or just return 0
+        return 0.0
+
+    error = abs(pred_val - gt_val)
+    return math.exp(-error / scale)
