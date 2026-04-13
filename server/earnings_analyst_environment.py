@@ -11,7 +11,7 @@ import math
 import os
 import json
 import random
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 from openenv.core.env_server.interfaces import Environment
@@ -23,6 +23,7 @@ from earnings_analyst.tasks.exceptions import TaskNotImplementedError
 from earnings_analyst.tasks.registry import get_grader
 
 from .dataset_loader import dataset
+from .episode_index import get_episode_index
 
 
 def _resolve_task_id(explicit: str | None) -> str:
@@ -68,18 +69,62 @@ class EarningsAnalystEnvironment(Environment):
         self._state = State(episode_id=str(uuid4()), step_count=0)
         self._current_row: dict[str, Any] | None = None
 
-    def reset(self) -> EarningsAnalystObservation:
-        """Sample one dataset row and return the agent-visible observation bundle."""
+    def reset(
+        self,
+        seed: int | None = None,
+        episode_id: str | None = None,
+        **kwargs: Any,
+    ) -> EarningsAnalystObservation:
+        """Sample one dataset row and return the agent-visible observation bundle.
+
+        If ``pick_symbol``, ``pick_year``, and ``pick_quarter`` are passed (Gradio),
+        load that row by ``(symbol, year, quarter)``. Otherwise sample uniformly at
+        random (default for HTTP clients).
+
+        Optional ``seed`` affects only the random row path.
+        """
+        pick_symbol = kwargs.pop("pick_symbol", None)
+        pick_year = kwargs.pop("pick_year", None)
+        pick_quarter = kwargs.pop("pick_quarter", None)
+        if kwargs:
+            raise TypeError(f"Unexpected keyword arguments: {sorted(kwargs)!r}")
+
         if not self._cfg["implemented"]:
             raise TaskNotImplementedError(
                 f"Task {self._task_id!r} is not implemented yet. "
                 f"Set implemented=True and fill spec/grader under tasks/ when ready."
             )
 
-        self._state = State(episode_id=str(uuid4()), step_count=0)
-        idx = random.randrange(len(dataset))
+        eid = episode_id if episode_id is not None else str(uuid4())
+        self._state = State(episode_id=eid, step_count=0)
+        if (
+            pick_symbol is not None
+            and str(pick_symbol).strip() != ""
+            and pick_year is not None
+            and pick_quarter is not None
+        ):
+            sym = str(pick_symbol).strip()
+            try:
+                yi = int(pick_year) if not isinstance(pick_year, int) else pick_year
+                qi = (
+                    int(pick_quarter)
+                    if not isinstance(pick_quarter, int)
+                    else pick_quarter
+                )
+            except (TypeError, ValueError) as e:
+                raise ValueError("Year and quarter must be integers.") from e
+            try:
+                idx = get_episode_index().row_index(sym, yi, qi)
+            except KeyError as e:
+                raise ValueError(str(e)) from None
+        else:
+            rng = random.Random(seed) if seed is not None else random
+            idx = rng.randrange(len(dataset))
+
+        return self._load_row_at(idx)
+
+    def _load_row_at(self, idx: int) -> EarningsAnalystObservation:
         row = dataset[idx]
-        # Normalize to a plain dict for grading and column access
         self._current_row = dict(row)
 
         text_context = {
@@ -118,7 +163,8 @@ class EarningsAnalystEnvironment(Environment):
 
         # Handle composite ground truth if multiple columns are specified (e.g. for get_figures)
         if "xbrl_columns" in self._cfg:
-            gt_data = {col: row.get(col) for col in self._cfg["xbrl_columns"]}
+            xbrl_cols = cast(list[str], self._cfg["xbrl_columns"])
+            gt_data = {col: row.get(col) for col in xbrl_cols}
             ground_truth = json.dumps(gt_data)
         else:
             ground_truth = str(row.get(label_col, "")).strip()
@@ -132,7 +178,6 @@ class EarningsAnalystEnvironment(Environment):
             )
         )
 
-
         return EarningsAnalystObservation(
             text_context={},
             numerical_context={},
@@ -145,7 +190,6 @@ class EarningsAnalystEnvironment(Environment):
                 "predicted": action.prediction,
             },
         )
-
 
     @property
     def state(self) -> State:
