@@ -239,7 +239,7 @@ footer { visibility: hidden; }
     border: 1px solid #d1d5db;
 }
 .theme-toggle .gap-2 { gap: 0 !important; }
-.theme-toggle input[type=radio] { display: none; }
+.theme-toggle input[type=radio] { display: none !important; }
 .theme-toggle label {
     display: inline-flex;
     align-items: center;
@@ -256,7 +256,15 @@ footer { visibility: hidden; }
     transition: background 0.15s, color 0.15s, border-color 0.15s;
     white-space: nowrap;
 }
-.theme-toggle label:last-of-type { border-right: none !important; }
+.theme-toggle label:first-of-type {
+    border-top-left-radius: var(--ea-radius-control) !important;
+    border-bottom-left-radius: var(--ea-radius-control) !important;
+}
+.theme-toggle label:last-of-type {
+    border-top-right-radius: var(--ea-radius-control) !important;
+    border-bottom-right-radius: var(--ea-radius-control) !important;
+    border-right: none !important;
+}
 /* Segments: zero radius so only the group clips to --ea-radius-control (overrides Gradio/Tailwind per-side radii) */
 .theme-toggle button,
 .theme-toggle [role="radiogroup"] button,
@@ -285,9 +293,9 @@ footer { visibility: hidden; }
 }
 .theme-toggle input[type=radio]:checked + label,
 .theme-toggle label.selected {
-    background: #387ED1;
-    color: #fff;
-    border-color: #387ED1;
+    background: #387ED1 !important;
+    color: #fff !important;
+    border-color: #387ED1 !important;
     z-index: 1;
 }
 /* Same highlight when .dark is on body/html (do not rely on html.dark alone) */
@@ -337,9 +345,9 @@ html[data-ea-theme="system"][data-ea-resolved="dark"] .theme-toggle button.selec
 }
 .dark .theme-toggle input[type=radio]:checked + label,
 .dark .theme-toggle label.selected {
-    background: #387ED1;
-    color: #fff;
-    border-color: #387ED1;
+    background: #387ED1 !important;
+    color: #fff !important;
+    border-color: #387ED1 !important;
 }
 
 /* Gradio index.html uses @media (prefers-color-scheme: dark) on body — override when forcing light */
@@ -504,14 +512,19 @@ theme_toggle_js = """
     function getToggleButtons() {
         const root = getToggleRoot();
         if (!root) return [];
-        return [...root.querySelectorAll("button")];
+        const btns = [...root.querySelectorAll("button")];
+        if (btns.length >= 3) return btns;
+        // Gradio 4 Radio renders label elements, not buttons
+        const labels = [...root.querySelectorAll("label")];
+        return labels.length >= 3 ? labels : btns;
     }
 
     function isButtonSelected(b) {
         return (
             b.classList.contains("selected") ||
             b.getAttribute("aria-checked") === "true" ||
-            b.dataset.state === "checked"
+            b.dataset.state === "checked" ||
+            (b.tagName === "LABEL" && b.querySelector("input[type=radio]:checked") !== null)
         );
     }
 
@@ -526,41 +539,46 @@ theme_toggle_js = """
         if (selected !== want) buttons[want].click();
     }
 
-    /** Highlight effective Light/Dark when preference is system; match explicit light/dark. */
+    /** Highlight effective Light/Dark when preference is system; match explicit light/dark.
+     *  IMPORTANT: must not touch classList — any class change triggers the MutationObserver
+     *  which would call scheduleToggleSync creating an infinite loop. Inline styles are
+     *  invisible to the observer's attributeFilter and break the cycle. */
     function updateThemeToggleVisual() {
         const pref = localStorage.getItem(KEY) || "system";
-        const buttons = getToggleButtons();
-        if (buttons.length < 3) return;
-
-        // Reset all buttons: remove class, clear highlight, and force radius to 0 via inline
-        // !important (beats Gradio's Tailwind rounded-l-lg / rounded-r-lg cascade)
-        buttons.forEach((b) => {
-            b.classList.remove("ea-theme-active");
-            b.style.removeProperty("background");
-            b.style.removeProperty("color");
-            b.style.removeProperty("border-color");
-            ["border-radius",
-             "border-top-left-radius", "border-top-right-radius",
-             "border-bottom-left-radius", "border-bottom-right-radius",
-            ].forEach((p) => b.style.setProperty(p, "0", "important"));
-        });
+        const segs = getToggleButtons();
+        if (segs.length < 3) return;
 
         const resolvedDark = wantsDark(pref);
-        let activeBtn = null;
-        if (pref === "system") {
-            activeBtn = resolvedDark ? buttons[2] : buttons[1];
-        } else if (pref === "dark") {
-            activeBtn = buttons[2];
-        } else {
-            activeBtn = buttons[1];
-        }
-        if (activeBtn) {
-            activeBtn.classList.add("ea-theme-active");
-            // Inline !important overrides Gradio's dark-mode stylesheet — no cascade battle
-            activeBtn.style.setProperty("background", "#387ED1", "important");
-            activeBtn.style.setProperty("color", "#fff", "important");
-            activeBtn.style.setProperty("border-color", "#387ED1", "important");
-        }
+        const activeIdx = pref === "dark" ? 2 : pref === "light" ? 1 :
+                          (resolvedDark ? 2 : 1);
+
+        const inactiveBg   = resolvedDark ? "#3f3f46" : "#ffffff";
+        const inactiveText = resolvedDark ? "#d4d4d8" : "#374151";
+        const R = "8px"; // mirrors --ea-radius-control
+
+        segs.forEach((seg, i) => {
+            // Apply border-radius directly on first/last — avoids relying on overflow:hidden
+            // clipping (which can be asymmetric on flex containers cross-browser)
+            const tl = i === 0 ? R : "0";
+            const bl = i === 0 ? R : "0";
+            const tr = i === segs.length - 1 ? R : "0";
+            const br = i === segs.length - 1 ? R : "0";
+            seg.style.setProperty("border-top-left-radius",     tl, "important");
+            seg.style.setProperty("border-bottom-left-radius",  bl, "important");
+            seg.style.setProperty("border-top-right-radius",    tr, "important");
+            seg.style.setProperty("border-bottom-right-radius", br, "important");
+
+            if (i === activeIdx) {
+                seg.style.setProperty("background",   "#387ED1", "important");
+                seg.style.setProperty("color",        "#ffffff", "important");
+                seg.style.setProperty("border-color", "#387ED1", "important");
+            } else {
+                // Explicitly de-highlight so Gradio's label.selected CSS can't bleed through
+                seg.style.setProperty("background",   inactiveBg,   "important");
+                seg.style.setProperty("color",        inactiveText, "important");
+                seg.style.removeProperty("border-color");
+            }
+        });
     }
 
     function applyTheme(pref) {
@@ -589,7 +607,6 @@ theme_toggle_js = """
         toggleSyncScheduled = true;
         queueMicrotask(() => {
             toggleSyncScheduled = false;
-            syncRadioToStorage();
             updateThemeToggleVisual();
         });
     }
@@ -604,7 +621,7 @@ theme_toggle_js = """
                 childList: true,
                 subtree: true,
                 attributes: true,
-                attributeFilter: ["class", "aria-checked", "data-state"],
+                attributeFilter: ["class", "aria-checked", "data-state", "checked"],
             });
             scheduleToggleSync();
         };
