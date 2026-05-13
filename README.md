@@ -1,16 +1,3 @@
----
-title: Earnings Analyst Environment Server
-emoji: 🏑
-colorFrom: pink
-colorTo: pink
-sdk: docker
-pinned: false
-app_port: 8000
-base_path: /web
-tags:
-  - openenv
----
-
 # Earnings Analyst (OpenEnv)
 
 This repository implements an **[OpenEnv](https://github.com/meta-pytorch/OpenEnv)** environment: a FastAPI/WebSocket server that exposes **earnings-call episodes** from a Hugging Face dataset as `reset` / `step` interactions. Each **task** (under `tasks/<name>/`) defines which columns appear in the observation, natural-language instructions for the agent, and how predictions are scored.
